@@ -14,7 +14,7 @@ module Lookbook
       end
 
       def beautify(source, language = "html")
-        source = source.strip
+        source = source.strip.gsub("\n", "")
         result = language.downcase == "html" ? HtmlBeautifier.beautify(source) : source
         result.strip.html_safe
       end
