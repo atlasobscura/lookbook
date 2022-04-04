@@ -66,7 +66,7 @@ module Lookbook
       {
         label: example.label,
         notes: example.notes,
-        html: preview_controller.render_example_to_string(@preview, example.name),
+        html: preview_controller.process(:render_example_to_string, @preview, example.name),
         source: has_template ? example.template_source(render_args[:template]) : example.method_source,
         source_lang: has_template ? example.template_lang(render_args[:template]) : example.source_lang,
         params: example.params
@@ -74,7 +74,7 @@ module Lookbook
     end
 
     def render_examples(examples)
-      preview_controller.render_in_layout_to_string("layouts/lookbook/preview", {examples: examples}, @preview.layout)
+      preview_controller.process(:render_in_layout_to_string, "layouts/lookbook/preview", {examples: examples}, @preview.layout)
     end
 
     def set_params
@@ -167,7 +167,6 @@ module Lookbook
         message_parts = exception.message.split("\n").first.split
         component_class = message_parts.first.constantize
         naughty_method = message_parts.last.delete("#").delete("`").delete(".")
-        p naughty_method
         method = component_class.instance_method(naughty_method.to_sym)
         if method
           {
@@ -176,7 +175,7 @@ module Lookbook
           }
         end
       end
-      Lookbook::Error.new(exception, error_params || {})
+      Lookbook::Error.new(exception, **(error_params || {}))
     end
   end
 end

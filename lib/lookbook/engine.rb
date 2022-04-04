@@ -78,15 +78,11 @@ module Lookbook
         config.lookbook.cable.logger ||= Rails.logger
       else
         config.lookbook.cable.logger = Lookbook::NullLogger.new
-        config.action_view.logger = Lookbook::NullLogger.new
       end
     end
 
     config.after_initialize do
       @preview_listener = Listen.to(*config.lookbook.listen_paths, only: /\.(rb|html.*)$/) do |modified, added, removed|
-        if Lookbook::Preview.errors.any?
-          Lookbook::Preview.reload
-        end
         begin
           parser.parse
         rescue
