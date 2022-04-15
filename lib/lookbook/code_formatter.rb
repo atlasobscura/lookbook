@@ -7,6 +7,7 @@ module Lookbook
       def highlight(source, language, opts = {})
         source&.strip! unless opts[:strip] == false
         source&.gsub!("&gt;", ">")&.gsub!("&lt;", "<")
+        source.gsub!("&amp;", "&")
         language ||= "ruby"
         formatter = Formatter.new(opts)
         lexer = Rouge::Lexer.find(language.to_s) || Rouge::Lexer.find("plaintext")
