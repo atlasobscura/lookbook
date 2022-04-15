@@ -13,10 +13,21 @@ module Lookbook
         formatter.format(lexer.lex(source)).html_safe
       end
 
-      def beautify(source, language = "html")
-        source = source.strip.gsub("\n", "")
-        result = language.downcase == "html" ? HtmlBeautifier.beautify(source) : source
-        result.strip.html_safe
+      def beautify(source, language = "html") 
+        return source unless language.downcase == "html"
+
+        fragment = Nokogiri::HTML.fragment(source)
+        html = collapse_class_lists(fragment).to_html.gsub(/\>[ ]+\</, ">\n<")
+        HtmlBeautifier.beautify(html).strip.html_safe
+      end
+
+      private
+
+      def collapse_class_lists(fragment)
+        fragment.search("[class]").each do |el|
+          el["class"] = el["class"].strip.squeeze(" ").gsub("\n", "")
+        end
+        fragment
       end
     end
   end
