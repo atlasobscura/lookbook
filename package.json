@@ -1,6 +1,6 @@
 {
   "name": "lookbook",
-  "version": "0.7.2-beta.4",
+  "version": "0.9.3",
   "description": "A native development UI for ViewComponent",
   "targets": {
     "app": {
@@ -61,6 +61,7 @@
     },
     "hooks": {
       "before:init": [
+        "npm install",
         "bundle install",
         "rake test"
       ],

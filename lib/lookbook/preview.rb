@@ -33,7 +33,7 @@ module Lookbook
     def examples
       return @examples if @examples.present?
       public_methods = @preview.public_instance_methods(false)
-      public_method_objects = @preview_inspector&.methods&.filter { |m| public_methods.include?(m.name) }
+      public_method_objects = @preview_inspector&.methods&.select { |m| public_methods.include?(m.name) }
       examples = (public_method_objects || []).map { |m| PreviewExample.new(m.name.to_s, self) }
       sorted = Lookbook.config.sort_examples ? examples.sort_by(&:label) : examples
       @examples = []
@@ -96,8 +96,14 @@ module Lookbook
         !!find(path)
       end
 
+      def clear_cache
+        @previews = nil
+      end
+
       def all
         load_previews if preview_files.size > ViewComponent::Preview.descendants.size
+
+        return @previews if @previews.present?
 
         previews = ViewComponent::Preview.descendants.map do |p|
           new(p)
@@ -112,7 +118,7 @@ module Lookbook
         end
 
         sorted_previews = previews.compact.sort_by { |preview| [preview.position, preview.label] }
-        PreviewCollection.new(sorted_previews)
+        @previews ||= PreviewCollection.new(sorted_previews)
       end
 
       def errors

@@ -1,5 +1,7 @@
 module Lookbook
   class PagesController < ApplicationController
+    helper_method :page_controller
+
     def self.controller_path
       "lookbook/pages"
     end
@@ -7,7 +9,7 @@ module Lookbook
     def index
       landing = Lookbook.pages.find(&:landing) || Lookbook.pages.first
       if landing.present?
-        redirect_to page_path landing.lookup_path
+        redirect_to lookbook_page_path landing.lookup_path
       else
         @title = "Not found"
         render "not_found"

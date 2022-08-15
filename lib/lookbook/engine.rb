@@ -10,7 +10,7 @@ module Lookbook
     end
 
     def logger
-      @logger ||= config.debug == true ? Rails.logger : Lookbook::NullLogger.new
+      @logger ||= Rails.logger
     end
 
     def version
@@ -23,6 +23,7 @@ module Lookbook
 
     config.lookbook = ActiveSupport::OrderedOptions.new
     config.lookbook.listen_paths ||= []
+    config.lookbook.listen_extensions ||= []
     config.lookbook.preview_paths ||= []
     config.lookbook.page_paths ||= ["test/components/docs"]
 
@@ -49,15 +50,20 @@ module Lookbook
       options.preview_srcdoc = false if options.preview_srcdoc.nil?
       options.preview_display_params ||= {}.with_indifferent_access
 
+      options.listen = Rails.env.development? if options.listen.nil?
       options.listen_paths = options.listen_paths.map(&:to_s)
       options.listen_paths += options.preview_paths
       options.listen_paths << (vc_options.view_component_path || Rails.root.join("app/components"))
-      options.listen_paths.filter! { |path| Dir.exist? path }
+      options.listen_paths.select! { |path| Dir.exist? path }
 
-      options.cable = ActionCable::Server::Configuration.new
-      options.cable.cable = {adapter: "async"}.with_indifferent_access
-      options.cable.mount_path ||= "/lookbook-cable"
-      options.cable.connection_class = -> { Lookbook::Connection }
+      options.listen_extensions += ["rb", "html.*"]
+      options.listen_extensions.uniq!
+
+      options.cable_mount_path ||= "/lookbook-cable"
+      options.cable_logger ||= Rails.logger
+
+      options.runtime_parsing = !Rails.env.production? if options.runtime_parsing.nil?
+      options.parser_registry_path ||= Rails.root.join("tmp/storage/.yardoc")
 
       options.experimental_features = false unless options.experimental_features.present?
     end
@@ -73,48 +79,48 @@ module Lookbook
       )
     end
 
-    initializer "lookbook.logging" do
-      if config.lookbook.debug == true
-        config.lookbook.cable.logger ||= Rails.logger
-      else
-        config.lookbook.cable.logger = Lookbook::NullLogger.new
-      end
-    end
-
     config.after_initialize do
-      @preview_listener = Listen.to(*config.lookbook.listen_paths, only: /\.(rb|html.*)$/) do |modified, added, removed|
-        begin
-          parser.parse
-        rescue
+      @preview_controller = Lookbook.config.preview_controller.constantize
+      @preview_controller.include(Lookbook::PreviewController)
+
+      if config.lookbook.listen
+        @preview_listener = Listen.to(*config.lookbook.listen_paths, only: /\.(#{config.lookbook.listen_extensions.join("|")})$/) do |modified, added, removed|
+          begin
+            parser.parse
+          rescue
+          end
+          Lookbook::Preview.clear_cache
+          Lookbook::Engine.websocket&.broadcast("reload", {
+            modified: modified,
+            removed: removed,
+            added: added
+          })
         end
-        if Lookbook::Engine.websocket
-          if modified.any? || removed.any? || added.none?
-            Lookbook::Engine.websocket.broadcast("reload", {
+        @preview_listener.start
+
+        if Lookbook::Features.enabled?(:pages)
+          @page_listener = Listen.to(*config.lookbook.page_paths.select { |dir| Dir.exist? dir }, only: /\.(html.*|md.*)$/) do |modified, added, removed|
+            Lookbook::Engine.websocket&.broadcast("reload", {
               modified: modified,
               removed: removed,
               added: added
             })
           end
+          @page_listener.start
         end
       end
-      @preview_listener.start
 
-      if Lookbook::Features.enabled?(:pages)
-        @page_listener = Listen.to(*config.lookbook.page_paths.filter { |dir| Dir.exist? dir }, only: /\.(html.*|md.*)$/) do |modified, added, removed|
-          if Lookbook::Engine.websocket
-            if modified.any? || removed.any? || added.any?
-              Lookbook::Engine.websocket.broadcast("reload", {
-                modified: modified,
-                removed: removed,
-                added: added
-              })
-            end
-          end
+      if config.lookbook.runtime_parsing
+        parser.parse
+      else
+        unless File.exist?(config.lookbook.parser_registry_path)
+          Lookbook.logger.warn "
+            Runtime parsing is disabled but no registry file has been found.
+            Did you run `rake lookbook:preparse` before starting the app?
+            Expected to find registry file at #{config.lookbook.parser_registry_path}
+          "
         end
-        @page_listener.start
       end
-
-      parser.parse
     end
 
     at_exit do
@@ -124,19 +130,26 @@ module Lookbook
 
     class << self
       def websocket
+        return @websocket unless @websocket.nil?
         if config.lookbook.auto_refresh
+          cable = ActionCable::Server::Configuration.new
+          cable.cable = {adapter: "async"}.with_indifferent_access
+          cable.mount_path = config.lookbook.cable_mount_path
+          cable.connection_class = -> { Lookbook::Connection }
+          cable.logger = config.lookbook.cable_logger
+
           @websocket ||= if Rails.version.to_f >= 6.0
-            ActionCable::Server::Base.new(config: config.lookbook.cable)
+            ActionCable::Server::Base.new(config: cable)
           else
-            websocket ||= ActionCable::Server::Base.new
-            websocket.config = config.lookbook.cable
-            websocket
+            @websocket ||= ActionCable::Server::Base.new
+            @websocket.config = cable
+            @websocket
           end
         end
       end
 
       def websocket_mount_path
-        "#{mounted_path}#{config.lookbook.cable.mount_path}" if websocket
+        "#{mounted_path}#{config.lookbook.cable_mount_path}" if websocket
       end
 
       def mounted_path
@@ -144,8 +157,10 @@ module Lookbook
       end
 
       def parser
-        @parser ||= Lookbook::Parser.new(config.lookbook.preview_paths)
+        @parser ||= Lookbook::Parser.new(config.lookbook.preview_paths, config.lookbook.parser_registry_path)
       end
+
+      attr_reader :preview_controller
     end
   end
 end

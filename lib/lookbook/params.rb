@@ -37,7 +37,7 @@ module Lookbook
       def cast(value, type = "String")
         case type.downcase
         when "symbol"
-          value.delete_prefix(":").to_sym
+          value.presence&.delete_prefix(":")&.to_sym
         when "hash"
           result = safe_parse_yaml(value, {})
           unless result.is_a? Hash
@@ -50,6 +50,14 @@ module Lookbook
           unless result.is_a? Array
             Lookbook.logger.debug "Failed to parse '#{value}' into an Array"
             result = []
+          end
+          result
+        when "datetime"
+          begin
+            result = DateTime.parse(value)
+          rescue Date::Error
+            Lookbook.logger.debug "Failed to parse '#{value}' into a DateTime"
+            result = DateTime.now
           end
           result
         else
@@ -81,6 +89,8 @@ module Lookbook
           "Boolean"
         elsif default.is_a? Symbol
           "Symbol"
+        elsif ["date", "datetime-local"].include?(input&.downcase) || default.is_a?(DateTime)
+          "DateTime"
         else
           "String"
         end
@@ -88,6 +98,8 @@ module Lookbook
 
       def input_text?(input)
         [
+          "date",
+          "datetime-local",
           "email",
           "number",
           "tel",

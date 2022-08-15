@@ -28,8 +28,8 @@ module Lookbook
         begin
           set_params
           @examples = examples_data
-          @drawer_panels = drawer_panels.filter { |name, panel| panel[:show] }
-          @preview_panels = preview_panels.filter { |name, panel| panel[:show] }
+          @drawer_panels = drawer_panels.select { |name, panel| panel[:show] }
+          @preview_panels = preview_panels.select { |name, panel| panel[:show] }
         rescue => exception
           render_in_layout "lookbook/error", error: prettify_error(exception)
         end
@@ -45,8 +45,11 @@ module Lookbook
       if @example
         @preview = @example.preview
         if params[:path] == @preview&.lookup_path
-          redirect_to show_path "#{params[:path]}/#{@preview.default_example.name}"
+          redirect_to lookbook_inspect_path "#{params[:path]}/#{@preview.default_example.name}"
         end
+      else
+        first_example = Lookbook.previews.find(params[:path])&.examples&.first
+        redirect_to lookbook_inspect_path(first_example.lookup_path) if first_example
       end
     end
 
@@ -130,7 +133,7 @@ module Lookbook
           template: "lookbook/previews/panels/notes",
           hotkey: "n",
           show: true,
-          disabled: @examples.filter { |e| e[:notes].present? }.none?
+          disabled: @examples.select { |e| e[:notes].present? }.none?
         },
         params: {
           label: "Params",
@@ -143,10 +146,8 @@ module Lookbook
     end
 
     def preview_controller
-      return @preview_controller if @preview_controller.present?
-      controller_class = Lookbook.config.preview_controller.constantize
-      controller_class.class_eval { include Lookbook::PreviewController }
-      controller = controller_class.new
+      return @preview_controller if @preview_controller
+      controller = Lookbook::Engine.preview_controller.new
       controller.request = request
       controller.response = response
       @preview_controller ||= controller
