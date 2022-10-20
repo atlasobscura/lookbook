@@ -1,5 +1,7 @@
-export default function createNavStore(Alpine) {
+import { prefixString } from "../helpers/string";
+
+export default function initPagesStore(Alpine, { prefix }) {
   return {
-    embeds: {},
+    embeds: Alpine.$persist({}).as(prefixString("pages-embeds", prefix)),
   };
 }

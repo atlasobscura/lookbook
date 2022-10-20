@@ -1,15 +1,19 @@
 module Lookbook
   module OutputHelper
     def markdown(text = nil, &block)
-      Lookbook::Markdown.render(block ? capture(&block) : text)
+      MarkdownRenderer.call(block ? capture(&block) : text, Lookbook.config.markdown_options)
     end
 
-    def highlight(source, language, opts = {})
-      Lookbook::CodeFormatter.highlight(source, language, opts)
+    def highlight(*args, **opts)
+      CodeHighlighter.call(*args, **opts)
     end
 
-    def beautify(source, language = "html")
-      Lookbook::CodeFormatter.beautify(source, language)
+    def beautify(*args, **opts)
+      CodeBeautifier.call(*args, **opts)
+    end
+
+    def pretty_json(obj)
+      JSON.pretty_generate(obj)
     end
   end
 end

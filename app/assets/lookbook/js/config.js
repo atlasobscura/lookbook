@@ -1,21 +1,24 @@
 export default {
   desktopWidth: 768,
+  wideDesktopWidth: 1200,
   sidebar: {
     defaultWidth: 280,
     minWidth: 200,
-    maxWidth: 350,
+    minSectionHeight: 200,
+  },
+  main: {
+    minWidth: 200,
   },
   inspector: {
     drawer: {
-      orientation: "horizontal",
-      defaultPanel: "source",
       defaultHeight: 300,
       defaultWidth: 500,
       minWidth: 350,
       minHeight: 200,
     },
     preview: {
-      defaultPanel: "preview",
+      minHeight: 200,
+      minWidth: 200,
     },
   },
 };

@@ -1,21 +1,26 @@
 module Lookbook
-  class Preview
+  class Preview < Collection
     include Utils
 
     delegate :name, :render_args, to: :@preview
-    delegate :position, :group, :notes, :hidden?, to: :@preview_inspector
+    delegate :position, :group, :notes, :hidden?, :tags, :tag, to: :@preview_inspector
 
-    def initialize(preview)
+    def initialize(preview, code_object)
       @preview = preview
-      @preview_inspector = CodeInspector.new(@preview.name)
+      @preview_inspector = SourceInspector.new(code_object, eval_scope: preview_class.new)
+      super(preview_class_path(@preview.name))
     end
 
     def id
       @preview_inspector&.id || generate_id(lookup_path)
     end
 
-    def preview_class
+    def preview_class_name
       @preview.name
+    end
+
+    def preview_class
+      @preview
     end
 
     def label
@@ -34,7 +39,7 @@ module Lookbook
       return @examples if @examples.present?
       public_methods = @preview.public_instance_methods(false)
       public_method_objects = @preview_inspector&.methods&.select { |m| public_methods.include?(m.name) }
-      examples = (public_method_objects || []).map { |m| PreviewExample.new(m.name.to_s, self) }
+      examples = (public_method_objects || []).map { |m| PreviewExample.new(m.name.to_s, self, m) }
       sorted = Lookbook.config.sort_examples ? examples.sort_by(&:label) : examples
       @examples = []
       if @preview_inspector&.groups&.any?
@@ -52,23 +57,27 @@ module Lookbook
       @examples = @examples.compact
     end
 
+    def items
+      examples.reject { |i| i.hidden? }
+    end
+
     def default_example
       examples.first
     end
 
-    def path
-      preview_class_name(preview_class_basename(name))
+    def rel_path
+      "#{name.underscore}.rb"
     end
 
     def full_path
-      base_path = Array(preview_paths).detect do |preview_path|
-        Dir["#{preview_path}/#{name.underscore}.rb"].first
+      base_path = preview_paths.detect do |preview_path|
+        Dir["#{preview_path}/#{rel_path}"].first
       end
-      Pathname.new(Dir["#{base_path}/#{name.underscore}.rb"].first)
+      Pathname.new(Dir["#{base_path}/#{rel_path}"].first)
     end
 
-    def preview_paths
-      ViewComponent::Base.preview_paths
+    def url_path
+      lookbook_inspect_path lookup_path
     end
 
     def parent_collections_names
@@ -83,8 +92,38 @@ module Lookbook
       @preview.instance_variable_get(:@layout)
     end
 
-    def display_params
-      Lookbook.config.preview_display_params.deep_merge(@preview_inspector&.display_params)
+    def display_options
+      Lookbook.config.preview_display_options.deep_merge(@preview_inspector&.display_options)
+    end
+
+    def collapsible?
+      true
+    end
+
+    def component
+      components.first
+    end
+
+    def components
+      component_classes = @preview_inspector&.components&.any? ? @preview_inspector&.components : [guess_component]
+      component_classes.map do |class_name|
+        Component.new(class_name.to_s)
+      end
+    end
+
+    def preview_paths
+      PathUtils.normalize_all(Lookbook.config.preview_paths)
+    end
+
+    protected
+
+    @preview_objects = nil
+    @previews = nil
+
+    def guess_component
+      name.chomp("Preview").constantize
+    rescue
+      nil
     end
 
     class << self
@@ -96,62 +135,37 @@ module Lookbook
         !!find(path)
       end
 
-      def clear_cache
-        @previews = nil
+      def any?
+        all.any?
       end
 
       def all
-        load_previews if preview_files.size > ViewComponent::Preview.descendants.size
+        if @previews.nil? && @preview_objects.present?
+          previews = @preview_objects.map do |code_object|
+            klass = code_object.path.constantize
+            new(klass, code_object) if klass.ancestors.include?(ViewComponent::Preview)
+          rescue => exception
+            Lookbook.logger.error Lookbook::Error.new(exception)
+            nil
+          end.compact
 
-        return @previews if @previews.present?
-
-        previews = ViewComponent::Preview.descendants.map do |p|
-          new(p)
-        rescue
-          Rails.logger.error "[lookbook] error instantiating preview\n#{exception.full_message}"
+          sorted_previews = previews.compact.sort_by { |preview| [preview.position, preview.label] }
+          @previews = PreviewCollection.new(sorted_previews)
+          @previews
+        elsif !@preview_objects.present?
+          PreviewCollection.new([])
+        else
+          @previews
         end
-
-        if errors.any?
-          errors.each do |error|
-            Rails.logger.error "[lookbook] preview error\n#{error.full_message}\n"
-          end
-        end
-
-        sorted_previews = previews.compact.sort_by { |preview| [preview.position, preview.label] }
-        @previews ||= PreviewCollection.new(sorted_previews)
       end
 
       def errors
         @errors ||= []
       end
 
-      protected
-
-      def load_previews
-        @errors = []
-        preview_files.each do |file|
-          require_dependency file[:path]
-        rescue SyntaxError, StandardError => exception
-          @errors.push(
-            Lookbook::Error.new(exception,
-              title: "Preview #{exception.class}",
-              file_name: file[:rel_path],
-              file_path: file[:path])
-          )
-        end
-      end
-
-      def preview_files
-        files = Array(Lookbook.config.preview_paths).map do |preview_path|
-          Dir["#{preview_path}/**/*preview.rb"].map do |path|
-            {
-              path: path,
-              base_path: preview_path,
-              rel_path: Pathname(path).relative_path_from(preview_path).to_s
-            }
-          end
-        end
-        files.flatten
+      def load!(preview_objects)
+        @preview_objects = preview_objects
+        @previews = nil
       end
     end
 

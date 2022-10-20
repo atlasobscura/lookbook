@@ -1,0 +1,83 @@
+guide:
+  - label: Getting Started
+    items:
+      - label: Overview
+        url: /guide/
+      - label: Quick Start
+        url: /guide/quick-start/
+      - label: Upgrade Guide
+        url: /guide/upgrading/
+      - label: Configuration
+        url: /guide/config/
+      - label: Deployment
+        url: /guide/deployment/
+      - label: Troubleshooting
+        url: /guide/troubleshooting/
+  - label: Previews
+    items:
+      - label: Overview
+        url: /guide/previews/
+      - label: Using Annotations
+        url: /guide/previews/annotating/
+      - label: Preview Layouts
+        url: /guide/previews/layouts/
+      - label: Customising the Nav
+        url: /guide/previews/navigation/
+      - label: Grouping Examples
+        url: /guide/previews/grouping/
+      - label: Dynamic Params
+        url: /guide/previews/params/
+      - label: Display Options
+        url: /guide/previews/display/
+  - label: Pages
+    items:
+      - label: Overview
+        url: /guide/pages/
+      - label: Frontmatter
+        url: /guide/pages/frontmatter/
+      - label: Variables & Helpers
+        url: /guide/pages/variables/
+      - label: Embedding Previews
+        url: /guide/pages/embedding/
+  - label: Themes
+    items:
+      - label: Overview
+        url: /guide/themes/
+      - label: Theme Customisation
+        url: /guide/themes/customisation/
+  - label: Extending
+    items:
+      - label: Inspector Panels
+        url: /guide/extend/panels/
+      - label: Param Inputs
+        url: /guide/extend/inputs/
+      - label: Custom Tags
+        url: /guide/extend/tags/
+      - label: Lifecycle Hooks
+        url: /guide/extend/hooks/
+      - label: Global Data
+        url: /guide/extend/data/
+
+api:
+  - label: General
+    items:
+      - label: Configuration Options
+        url: /api/config/
+      - label: Extension APIs
+        url: /api/extensions/
+      - label: Tags Reference
+        url: /api/tags/
+  - label: Entities
+    items:
+      - label: Page
+        url: /api/entities/page/
+      - label: Preview
+        url: /api/entities/preview/
+      - label: PreviewExample
+        url: /api/entities/preview_example/
+      - label: PreviewGroup
+        url: /api/entities/preview_group/
+      - label: Component
+        url: /api/entities/component/
+      - label: Tag
+        url: /api/entities/tag/

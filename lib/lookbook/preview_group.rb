@@ -1,21 +1,16 @@
 module Lookbook
-  class PreviewGroup
-    include Utils
-
+  class PreviewGroup < Entity
     attr_reader :name, :examples, :preview
 
     def initialize(name, preview, examples)
       @name = name
       @preview = preview
       @examples = examples
+      super("#{@preview.path}/#{name}")
     end
 
-    def id
-      generate_id(lookup_path)
-    end
-
-    def path
-      "#{@preview.path}/#{name}"
+    def url_path
+      lookbook_inspect_path lookup_path
     end
 
     def label
@@ -30,10 +25,10 @@ module Lookbook
       examples.map(&:params).flatten.uniq { |param| param[:name] }
     end
 
-    def display_params
+    def display_options
       merged = {}
       examples.reverse.map do |example|
-        merged.merge! example.display_params
+        merged.merge! example.display_options
       end
       merged
     end
@@ -52,6 +47,14 @@ module Lookbook
 
     def hierarchy_depth
       @preview.hierarchy_depth + 1
+    end
+
+    def tags(name = nil)
+      examples.map { |example| example.tags(name) }.flatten
+    end
+
+    def tag(name = nil)
+      tags(name).first
     end
 
     alias_method :lookup_path, :path

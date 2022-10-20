@@ -1,6 +1,6 @@
-export default function createFilterStore(Alpine) {
+export default function initFilterStore(Alpine, name) {
   return {
-    raw: Alpine.$persist("").as("filter-text"),
+    raw: Alpine.$persist("").as(name),
     get text() {
       return this.raw.replace(/\s/g, "").toLowerCase();
     },

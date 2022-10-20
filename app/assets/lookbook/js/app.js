@@ -1,74 +1,94 @@
-import { install } from "@github/hotkey";
-import Alpine from "alpinejs";
-import Persist from "@alpinejs/persist";
-import Morph from "@alpinejs/morph";
-import Tooltip from "@ryangjchandler/alpine-tooltip";
+import createSocket from "./lib/socket";
+import { morph } from "./helpers/dom";
+import { fetchHTML } from "./helpers/request";
+import { isExternalLink } from "./helpers/dom";
 
-import app from "./components/app";
-import page from "./components/page";
-import inspector from "./components/inspector";
-import previewWindow from "./components/preview-window";
-import filter from "./components/filter";
-import param from "./components/param";
-import sidebar from "./components/sidebar";
-import nav from "./components/nav";
-import navItem from "./components/nav-item";
-import navGroup from "./components/nav-group";
-import splitter from "./components/splitter";
-import tabs from "./components/tabs";
-import copy from "./components/copy";
-import code from "./components/code";
-import sizes from "./components/sizes";
-import embed from "./components/embed";
-import pageTabs from "./components/page-tabs";
+export default function app() {
+  return {
+    _requestsInProgress: 0,
 
-import initFilterStore from "./stores/filter";
-import initLayoutStore from "./stores/layout";
-import initNavStore from "./stores/nav";
-import initSidebarStore from "./stores/sidebar";
-import initInspectorStore from "./stores/inspector";
-import initPagesStore from "./stores/pages";
+    version: Alpine.$persist("").as("lookbook-version"),
 
-// Plugins
+    location: window.location,
 
-Alpine.plugin(Persist);
-Alpine.plugin(Morph);
-Alpine.plugin(Tooltip);
+    get sidebarHidden() {
+      return this.$store.layout.sidebar.hidden;
+    },
 
-// Stores
+    get loading() {
+      return this._requestsInProgress > 0;
+    },
 
-Alpine.store("filter", initFilterStore(Alpine));
-Alpine.store("layout", initLayoutStore(Alpine));
-Alpine.store("nav", initNavStore(Alpine));
-Alpine.store("sidebar", initSidebarStore(Alpine));
-Alpine.store("inspector", initInspectorStore(Alpine));
-Alpine.store("pages", initPagesStore(Alpine));
+    init() {
+      if (window.SOCKET_PATH) {
+        console.log("SOCKET CREATED");
+        const socket = createSocket(window.SOCKET_PATH);
+        socket.addListener("Lookbook::ReloadChannel", () => this.updateDOM());
+      }
+    },
 
-// Components
+    navigateTo(path) {
+      this.debug(`Navigating to ${path}`);
+      history.pushState({}, null, path);
+      this.$dispatch("popstate");
+    },
 
-Alpine.data("app", app);
-Alpine.data("page", page);
-Alpine.data("sidebar", sidebar);
-Alpine.data("splitter", splitter);
-Alpine.data("previewWindow", previewWindow);
-Alpine.data("copy", copy);
-Alpine.data("code", code);
-Alpine.data("inspector", inspector);
-Alpine.data("filter", filter);
-Alpine.data("param", param);
-Alpine.data("sizes", sizes);
-Alpine.data("nav", nav);
-Alpine.data("tabs", tabs);
-Alpine.data("navItem", navItem);
-Alpine.data("navGroup", navGroup);
-Alpine.data("embed", embed);
-Alpine.data("pageTabs", pageTabs);
+    async handleNavigation() {
+      this.debug("Navigating to ", window.location.pathname);
+      this.$dispatch("navigation:start");
+      this.location = window.location;
+      await this.updateDOM();
+      this.$dispatch("navigation:complete");
+    },
 
-// Init
+    hijax(evt) {
+      const link = evt.target.closest("a[href]");
+      if (link && !isExternalLink(link)) {
+        evt.preventDefault();
+        this.navigateTo(link.href);
+      }
+    },
 
-for (const el of document.querySelectorAll("[data-hotkey]")) {
-  install(el);
+    async updateDOM() {
+      this.debug("Starting DOM update");
+      this.$dispatch("dom:update-start");
+      this.requestStart();
+      try {
+        const { fragment, title } = await fetchHTML(
+          window.location,
+          `#${this.$root.id}`
+        );
+        morph(this.$root, fragment);
+        document.title = title;
+        this.requestEnd();
+        this.$dispatch("dom:update-complete");
+        this.debug("DOM update complete");
+      } catch (err) {
+        this.error(err);
+        window.location.reload();
+      }
+    },
+
+    toggleSidebar() {
+      this.$store.layout.sidebar.hidden = !this.$store.layout.sidebar.hidden;
+    },
+
+    closeMobileSidebar() {
+      if (this.$store.layout.mobile && !this.sidebarHidden) {
+        this.toggleSidebar();
+      }
+    },
+
+    requestStart() {
+      this._requestsInProgress += 1;
+    },
+
+    requestEnd() {
+      if (this._requestsInProgress > 0) {
+        this._requestsInProgress -= 1;
+      }
+    },
+
+    ...Alpine.$log,
+  };
 }
-
-window.Alpine = Alpine;
-Alpine.start();

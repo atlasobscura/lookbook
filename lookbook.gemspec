@@ -13,20 +13,16 @@ Gem::Specification.new do |spec|
   spec.files = Dir["{app,config,lib,public}/**/*", "LICENSE.txt", "README.md"]
   spec.require_paths = ["lib"]
 
-  spec.required_ruby_version = ">= 2.5.0"
-
+  spec.add_dependency "css_parser"
   spec.add_dependency "actioncable"
+  spec.add_dependency "activemodel"
+  spec.add_dependency "zeitwerk", "~> 2.5"
   spec.add_dependency "railties", ">= 5.0"
   spec.add_dependency "view_component", "~> 2.0"
   spec.add_dependency "redcarpet", "~> 3.5"
-  spec.add_dependency "rouge", "~> 3.26"
+  spec.add_dependency "rouge", ">= 3.26", "< 5.0"
   spec.add_dependency "listen", "~> 3.0"
   spec.add_dependency "yard", "~> 0.9.25"
   spec.add_dependency "htmlbeautifier", "~> 1.3"
-
-  spec.add_development_dependency "sqlite3", "~> 1.4"
-  spec.add_development_dependency "shoulda", "~> 4.0"
-  spec.add_development_dependency "warning", "~> 1.2"
-  spec.add_development_dependency "standard", "~> 1.1"
-  spec.add_development_dependency "capybara", "~> 3.3"
+  spec.add_dependency "htmlentities", "~> 4.3.4"
 end

@@ -1,21 +1,22 @@
-export default function createNavStore(Alpine) {
+import initFilterStore from "./filter";
+import { prefixString } from "../helpers/string";
+
+export default function initNavStore(Alpine, { prefix }) {
   return {
-    open: Alpine.$persist([]).as("nav-open"),
-    active: Alpine.$persist(null).as("nav-active"),
-    isOpen(id) {
-      return this.open.includes(id);
+    previews: {
+      filter: initFilterStore(
+        Alpine,
+        prefixString("previews-filter-text", prefix)
+      ),
+      open: Alpine.$persist([]).as(prefixString("previews-nav-open", prefix)),
     },
-    setOpen(id) {
-      this.open.push(id);
-    },
-    setClosed(id) {
-      const index = this.open.indexOf(id);
-      if (index > -1) {
-        this.open.splice(index, 1);
-      }
-    },
-    toggle(id) {
-      this.isOpen(id) ? this.setClosed(id) : this.setOpen(id);
+
+    pages: {
+      filter: initFilterStore(
+        Alpine,
+        prefixString("pages-filter-text", prefix)
+      ),
+      open: Alpine.$persist([]).as(prefixString("pages-nav-open", prefix)),
     },
   };
 }
