@@ -1,60 +1,90 @@
 {
   "name": "lookbook",
-  "version": "0.9.3",
+  "version": "1.2.1",
   "description": "A native development UI for ViewComponent",
   "targets": {
     "app": {
       "source": [
         "./app/assets/lookbook/js/embed.js",
-        "./app/assets/lookbook/js/app.js",
-        "./app/assets/lookbook/css/app.css"
+        "./app/assets/lookbook/js/lookbook.js",
+        "./app/assets/lookbook/css/lookbook.css",
+        "./app/assets/lookbook/css/themes/indigo.css",
+        "./app/assets/lookbook/css/themes/blue.css",
+        "./app/assets/lookbook/css/themes/zinc.css"
       ],
       "distDir": "./public/lookbook-assets"
     }
   },
+  "alias": {
+    "@helpers/*": "./app/assets/lookbook/js/helpers/$1",
+    "@lib/*": "./app/assets/lookbook/js/lib/$1",
+    "@components/*": "./app/components/lookbook/$1"
+  },
   "scripts": {
-    "dev": "parcel watch",
-    "build": "parcel build --no-cache",
+    "dev": "parcel watch -p 5111",
+    "build": "parcel build --no-cache --no-optimize",
+    "themes:generate": "bin/generate-themes",
     "clean": "rm -rf .parcel-cache",
     "lint:fix": "standardrb --fix && prettier --write .",
     "release": "release-it",
-    "release:dry-run": "release-it --dry-run"
+    "release:dry-run": "release-it --dry-run",
+    "prepare": "husky install"
   },
   "author": "Mark Perkins",
   "license": "MIT",
-  "devDependencies": {
-    "@tailwindcss/forms": "^0.4.0",
+  "dependencies": {
+    "@alpinejs/collapse": "^3.10.4",
+    "@alpinejs/morph": "^3.10.4",
+    "@alpinejs/persist": "^3.10.4",
+    "@parcel/resolver-glob": "^2.4.0",
+    "@rails/actioncable": "^6.1.4",
+    "@ryangjchandler/alpine-tooltip": "^1.2.0",
+    "@tailwindcss/forms": "^0.5.3",
     "@tailwindcss/typography": "^0.5.0",
+    "alpinejs": "^3.10.4",
     "autoprefixer": "^10.4.0",
-    "eslint": "^7.32.0",
-    "eslint-config-airbnb-base": "^14.2.1",
+    "command-line-args": "^5.2.1",
+    "iframe-resizer": "^4.3.2",
+    "js-cookie": "^3.0.1",
+    "loglevel": "^1.8.0",
+    "loglevel-plugin-prefix": "^0.8.4",
+    "parcel": "^2.7.0",
+    "postcss": "^8.4.18",
+    "postcss-import": "^15.0.0",
+    "postcss-import-ext-glob": "^2.0.1",
+    "split-grid": "^1.0.11",
+    "tailwindcss": "^3.0.6",
+    "throttle-debounce": "^5.0.0",
+    "tippy.js": "^6.3.2"
+  },
+  "devDependencies": {
+    "commitizen": "^4.2.5",
+    "concurrently": "^7.2.1",
+    "cz-conventional-changelog": "^3.3.0",
+    "eslint": "^8.25.0",
+    "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^8.3.0",
     "eslint-plugin-import": "^2.25.2",
-    "parcel": "^2.0.1",
-    "postcss": "^8.4.5",
-    "postcss-import": "^14.0.2",
-    "prettier": "2.3.2",
-    "release-it": "^14.11.6",
-    "tailwindcss": "^3.0.6"
+    "husky": "^8.0.1",
+    "lint-staged": "^13.0.3",
+    "prettier": "2.7.1",
+    "release-it": "^15.5.0"
   },
-  "dependencies": {
-    "@alpinejs/morph": "^3.9.1",
-    "@alpinejs/persist": "^3.9.1",
-    "@github/hotkey": "^1.6.0",
-    "@rails/actioncable": "^6.1.4",
-    "@ryangjchandler/alpine-tooltip": "^0.1.2",
-    "alpinejs": "^3.9.1",
-    "debounce": "^1.2.1",
-    "iframe-resizer": "^4.3.2",
-    "split-grid": "^1.0.11",
-    "tippy.js": "^6.3.2"
+  "lint-staged": {
+    "**/*": [
+      "prettier --write --ignore-unknown"
+    ],
+    "**/*.rb": [
+      "standardrb --fix"
+    ]
   },
   "release-it": {
     "git": {
-      "commitMessage": "release v${version}"
+      "commitMessage": "chore(${branchName}) release ${version}"
     },
     "github": {
-      "release": true
+      "release": true,
+      "releaseName": "Release ${version}"
     },
     "npm": {
       "publish": false
@@ -63,11 +93,20 @@
       "before:init": [
         "npm install",
         "bundle install",
-        "rake test"
+        "rake spec"
       ],
-      "after:bump": "npm run build",
-      "after:version:bump": "rake 'lookbook:release:bump_version[${version}]' && bundle",
-      "after:release": "rake 'lookbook:release:build_and_push'"
+      "after:bump": [
+        "bundle exec appraisal install",
+        "npm run lint:fix",
+        "npm run build"
+      ],
+      "after:version:bump": "./bin/bump-version ${version} && bundle",
+      "after:release": "./bin/release ${version}"
+    }
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
     }
   }
 }

@@ -4,38 +4,30 @@ module Lookbook
 
     def page_path(id)
       page = id.is_a?(Page) ? id : Lookbook.pages.find(id)
-      lookbook_page_path page.lookup_path
+      if page.present?
+        lookbook_page_path page.lookup_path
+      else
+        Lookbook.logger.warn "Could not find page with id ':#{id}'"
+      end
     end
 
-    def embed(*args, params: {}, type: :preview, **opts)
+    def embed(*args, params: {}, type: :preview, max_height: nil, **opts)
       return unless args.any?
 
       @embed_counter ||= 0
 
-      preview_lookup = args.first.is_a?(Symbol) ? args.first : preview_class_name(args.first)
+      preview_lookup = args.first.is_a?(Symbol) ? args.first : preview_class_path(args.first)
       preview = Lookbook.previews.find(preview_lookup)
-
       example = args[1] ? preview&.example(args[1]) : preview&.default_example
 
-      if example
-        @embed_counter += 1
-        render_component "embed",
-          id: generate_id("embed", url_for, example.lookup_path, @embed_counter - 1),
-          example: example,
-          params: params,
-          opts: opts
-      else
-        embed_not_found
-      end
-    end
+      embed_id = "#{url_for}/embed/#{example.lookup_path}".delete_prefix("/").tr("/", "-")
 
-    protected
-
-    def embed_not_found
-      render_component "not_found", {
-        title: "Preview not found",
-        text: "The preview may have been renamed or deleted."
-      }
+      lookbook_render :embed,
+        id: embed_id,
+        example: example,
+        params: params,
+        max_height: max_height,
+        opts: opts
     end
   end
 end

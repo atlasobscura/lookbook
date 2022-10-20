@@ -1,8 +1,5 @@
-<input
-  class="form-input"
-  type="<%= input_type %>"
-  name="<%= name %>"
-  value="<%= value %>"
-  x-data="param('<%= name %>', '<%= j(value) %>', {debounce: 300})"
-  x-model="value"
-  @keyup.stop>
+<%= text_field_tag(name, value,
+  **input_options,
+  type: input,
+  "x-model.debounce.200ms": "value"
+) %>

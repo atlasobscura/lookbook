@@ -1,166 +1,153 @@
-require "rails"
 require "view_component"
 require "action_cable/engine"
 require "listen"
 
 module Lookbook
-  class << self
-    def config
-      @config ||= Engine.config.lookbook
-    end
-
-    def logger
-      @logger ||= Rails.logger
-    end
-
-    def version
-      Lookbook::VERSION
-    end
-  end
-
   class Engine < Rails::Engine
     isolate_namespace Lookbook
 
-    config.lookbook = ActiveSupport::OrderedOptions.new
-    config.lookbook.listen_paths ||= []
-    config.lookbook.listen_extensions ||= []
-    config.lookbook.preview_paths ||= []
-    config.lookbook.page_paths ||= ["test/components/docs"]
+    config.autoload_paths << File.expand_path(root.join("app/components"))
 
-    initializer "view_component.set_configs" do
-      options = config.lookbook
-      vc_options = config.view_component
-
-      options.project_name ||= options.project_name == false ? nil : options.project_name || "Lookbook"
-      options.auto_refresh = true if options.auto_refresh.nil?
-      options.sort_examples = false if options.sort_examples.nil?
-      options.debug = false unless options.debug == true
-
-      options.preview_paths = options.preview_paths.map(&:to_s)
-      options.preview_paths += vc_options.preview_paths
-
-      options.page_paths = options.page_paths.map(&:to_s)
-      options.page_controller = "Lookbook::PageController" if options.page_controller.nil?
-      options.page_route ||= "pages"
-      options.page_options ||= {}.with_indifferent_access
-
-      options.markdown_options = Markdown::DEFAULT_OPTIONS.merge(options.markdown_options || {})
-
-      options.preview_controller = vc_options.preview_controller if options.preview_controller.nil?
-      options.preview_srcdoc = false if options.preview_srcdoc.nil?
-      options.preview_display_params ||= {}.with_indifferent_access
-
-      options.listen = Rails.env.development? if options.listen.nil?
-      options.listen_paths = options.listen_paths.map(&:to_s)
-      options.listen_paths += options.preview_paths
-      options.listen_paths << (vc_options.view_component_path || Rails.root.join("app/components"))
-      options.listen_paths.select! { |path| Dir.exist? path }
-
-      options.listen_extensions += ["rb", "html.*"]
-      options.listen_extensions.uniq!
-
-      options.cable_mount_path ||= "/lookbook-cable"
-      options.cable_logger ||= Rails.logger
-
-      options.runtime_parsing = !Rails.env.production? if options.runtime_parsing.nil?
-      options.parser_registry_path ||= Rails.root.join("tmp/storage/.yardoc")
-
-      options.experimental_features = false unless options.experimental_features.present?
+    config.before_configuration do
+      config.lookbook = Lookbook.config
     end
 
-    initializer "lookbook.parser.tags" do
-      Lookbook::Parser.define_tags
+    initializer "lookbook.viewcomponent.config_sync" do
+      opts.preview_paths += config.view_component.preview_paths
+      opts.preview_controller ||= config.view_component.preview_controller
+
+      if config.view_component.view_component_path.present?
+        opts.components_path = config.view_component.view_component_path
+      end
     end
 
     initializer "lookbook.assets.serve" do
       config.app_middleware.use(
         Rack::Static,
-        urls: ["/lookbook-assets"], root: Lookbook::Engine.root.join("public").to_s
+        urls: ["/lookbook-assets"], root: root.join("public").to_s
       )
     end
 
+    initializer "lookbook.file_watcher.paths" do
+      opts.listen_paths += opts.preview_paths
+      opts.listen_paths << opts.components_path
+    end
+
+    initializer "lookbook.file_watcher.previews" do
+      file_watcher.watch(opts.listen_paths, opts.listen_extensions, wait_for_delay: 0.5) do |changes|
+        parser.parse { run_hooks(:after_change, changes) }
+      end
+    end
+
+    initializer "lookbook.file_watcher.pages" do
+      file_watcher.watch(opts.page_paths, opts.page_extensions) do |changes|
+        self.class.websocket.broadcast(:reload)
+        run_hooks(:after_change, changes)
+      end
+    end
+
+    initializer "lookbook.parser.preview_load_callback" do
+      parser.after_parse do |registry|
+        Preview.load!(registry.all(:class))
+        self.class.websocket.broadcast(:reload)
+      end
+    end
+
     config.after_initialize do
-      @preview_controller = Lookbook.config.preview_controller.constantize
-      @preview_controller.include(Lookbook::PreviewController)
-
-      if config.lookbook.listen
-        @preview_listener = Listen.to(*config.lookbook.listen_paths, only: /\.(#{config.lookbook.listen_extensions.join("|")})$/) do |modified, added, removed|
-          begin
-            parser.parse
-          rescue
-          end
-          Lookbook::Preview.clear_cache
-          Lookbook::Engine.websocket&.broadcast("reload", {
-            modified: modified,
-            removed: removed,
-            added: added
-          })
-        end
-        @preview_listener.start
-
-        if Lookbook::Features.enabled?(:pages)
-          @page_listener = Listen.to(*config.lookbook.page_paths.select { |dir| Dir.exist? dir }, only: /\.(html.*|md.*)$/) do |modified, added, removed|
-            Lookbook::Engine.websocket&.broadcast("reload", {
-              modified: modified,
-              removed: removed,
-              added: added
-            })
-          end
-          @page_listener.start
-        end
+      @preview_controller = opts.preview_controller.constantize
+      @preview_controller.class_eval do
+        include Lookbook::PreviewController
+        helper Lookbook::PreviewHelper
       end
+    end
 
-      if config.lookbook.runtime_parsing
-        parser.parse
+    config.after_initialize do
+      if Rails.application.respond_to?(:server)
+        Rails.application.server { file_watcher.start if listen? }
+      elsif process.supports_listening?
+        file_watcher.start if listen?
+      end
+    end
+
+    config.after_initialize do
+      parser.parse { run_hooks(:after_initialize) }
+    end
+
+    def opts
+      Lookbook.config
+    end
+
+    def run_hooks(event_name, *args)
+      self.class.hooks.for_event(event_name).each do |hook|
+        hook.call(Lookbook, *args)
+      end
+    end
+
+    def parser
+      @parser ||= PreviewParser.new(opts.preview_paths, Engine.tags)
+    end
+
+    def file_watcher
+      @file_watcher ||= FileWatcher.new(force_polling: opts.listen_use_polling)
+    end
+
+    def process
+      @process ||= Process.new(env: Rails.env)
+    end
+
+    def listen?
+      opts.listen && process.supports_listening?
+    end
+
+    def self.mount_path
+      routes.find_script_name({})
+    end
+
+    def self.mounted?
+      mount_path.present?
+    end
+
+    def self.app_name
+      name = if Rails.application.class.respond_to?(:module_parent_name)
+        Rails.application.class.module_parent_name
       else
-        unless File.exist?(config.lookbook.parser_registry_path)
-          Lookbook.logger.warn "
-            Runtime parsing is disabled but no registry file has been found.
-            Did you run `rake lookbook:preparse` before starting the app?
-            Expected to find registry file at #{config.lookbook.parser_registry_path}
-          "
-        end
+        Rails.application.class.parent_name
       end
+      name.underscore
+    end
+
+    def self.websocket
+      if mounted?
+        use_websocket = opts.auto_refresh && opts.listen && process.supports_listening?
+        @websocket ||= use_websocket ? Websocket.new(mount_path, logger: Lookbook.logger) : Websocket.noop
+      else
+        Websocket.noop
+      end
+    end
+
+    def self.panels
+      @panels ||= PanelStore.init_from_config
+    end
+
+    def self.inputs
+      @inputs ||= InputStore.init_from_config
+    end
+
+    def self.tags
+      @tags ||= TagStore.init_from_config
+    end
+
+    def self.hooks
+      @hooks ||= HookStore.init_from_config
+    end
+
+    def self.preview_controller
+      @preview_controller
     end
 
     at_exit do
-      @preview_listener&.stop
-      @page_listener&.stop
-    end
-
-    class << self
-      def websocket
-        return @websocket unless @websocket.nil?
-        if config.lookbook.auto_refresh
-          cable = ActionCable::Server::Configuration.new
-          cable.cable = {adapter: "async"}.with_indifferent_access
-          cable.mount_path = config.lookbook.cable_mount_path
-          cable.connection_class = -> { Lookbook::Connection }
-          cable.logger = config.lookbook.cable_logger
-
-          @websocket ||= if Rails.version.to_f >= 6.0
-            ActionCable::Server::Base.new(config: cable)
-          else
-            @websocket ||= ActionCable::Server::Base.new
-            @websocket.config = cable
-            @websocket
-          end
-        end
-      end
-
-      def websocket_mount_path
-        "#{mounted_path}#{config.lookbook.cable_mount_path}" if websocket
-      end
-
-      def mounted_path
-        Lookbook::Engine.routes.find_script_name({})
-      end
-
-      def parser
-        @parser ||= Lookbook::Parser.new(config.lookbook.preview_paths, config.lookbook.parser_registry_path)
-      end
-
-      attr_reader :preview_controller
+      file_watcher.stop
+      run_hooks(:before_exit)
     end
   end
 end

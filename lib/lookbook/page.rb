@@ -1,7 +1,5 @@
 module Lookbook
-  class Page
-    include Utils
-
+  class Page < Entity
     FRONTMATTER_FIELDS = [
       :id,
       :label,
@@ -15,35 +13,34 @@ module Lookbook
       :data
     ]
 
-    attr_reader :errors
-    attr_accessor :tabs
+    attr_reader :errors, :rel_path, :content, :frontmatter
+    attr_accessor :sections
 
     def initialize(path, base_path)
       @pathname = Pathname.new path
       @base_path = Pathname.new base_path
       @options = nil
       @errors = []
-      @tabs = []
+      @sections = []
+      @frontmatter = {}
+      @content = ""
+      @page_name = remove_position_prefix(path_name)
+      @rel_path = @pathname.relative_path_from(@base_path)
+      page_path = @rel_path.dirname.to_s == "." ? @page_name : "#{@rel_path.dirname}/#{@page_name}"
+      extract_frontmatter(file_contents)
+      super(page_path)
     end
 
-    def path
-      rel_path = @pathname.relative_path_from(@base_path)
-
-      _path = (rel_path.dirname.to_s == "." ? name : "#{rel_path.dirname}/#{name}")
-      _path.gsub!("[#{tab}]", "") if tab?
-      _path
-    end
-
-    def lookup_path
-      @lookup_path ||= to_lookup_path(path)
+    def url_path
+      lookbook_page_path lookup_path
     end
 
     def full_path
-      Rails.root.join(@pathname.to_s)
+      Pathname.new Rails.root.join(@pathname.to_s)
     end
 
     def name
-      remove_position_prefix(path_name)
+      @page_name
     end
 
     def hidden?
@@ -66,16 +63,8 @@ module Lookbook
       options[key]
     end
 
-    def content
-      @content ||= strip_frontmatter(file_contents).strip
-    end
-
     def matchers
       normalize_matchers(label)
-    end
-
-    def hierarchy_depth
-      path.split("/").size
     end
 
     def parent_collections_names
@@ -83,16 +72,23 @@ module Lookbook
     end
 
     def type
-      tab? ? :tab : :page
+      :page
     end
 
-    def tab
-      matches = full_path.to_s.match(%r{\[(?<tab>\w+)\]})
-      matches ? remove_position_prefix(matches[:tab]) : nil
+    def id
+      options[:id]
     end
 
-    def tab?
-      tab.present?
+    def position
+      options[:position]
+    end
+
+    def hidden
+      options[:hidden]
+    end
+
+    def label
+      options[:label]
     end
 
     def method_missing(method_name, *args, &block)
@@ -115,20 +111,9 @@ module Lookbook
 
     def options
       return @options if @options
-      begin
-        frontmatter = (get_frontmatter(file_contents) || {}).deep_symbolize_keys
-      rescue => exception
-        frontmatter = {}
-        line_number_match = exception.message.match(/.*line\s(\d+)/)
-        @errors.push(Lookbook::Error.new(exception, **{
-          title: "YAML frontmatter parsing error",
-          file_path: @pathname.to_s,
-          line_number: line_number_match ? line_number_match[1] : false
-        }))
-      end
       @options = Lookbook.config.page_options.deep_merge(frontmatter).with_indifferent_access
-      @options[:id] = @options[:id] ? generate_id(@options[:id]) : generate_id(lookup_path)
-      @options[:label] ||= (tab? ? tab : name).titleize
+      @options[:id] = generate_id(@options[:id] || lookup_path)
+      @options[:label] ||= name.titleize
       @options[:title] ||= @options[:label]
       @options[:hidden] ||= false
       @options[:landing] ||= false
@@ -137,6 +122,17 @@ module Lookbook
       @options[:header] = true unless @options.key? :header
       @options[:footer] = true unless @options.key? :footer
       @options
+    end
+
+    def extract_frontmatter(content)
+      @frontmatter, @content = FrontmatterExtractor.call(content)
+    rescue => exception
+      line_number_match = exception.message.match(/.*line\s(\d+)/)
+      @errors.push(Lookbook::Error.new(exception, **{
+        title: "YAML frontmatter parsing error",
+        file_path: @pathname.to_s,
+        line_number: line_number_match ? line_number_match[1] : false
+      }))
     end
 
     def path_name
@@ -156,11 +152,15 @@ module Lookbook
         !!find(path)
       end
 
+      def any?
+        all.any?
+      end
+
       def all
-        pages, tabs =
+        pages, sections =
           Array(page_paths).flat_map do |dir|
-            Dir["#{dir}/**/*.html.*", "#{dir}/**/*.md.*"].sort.map do |page|
-              page = Lookbook::Page.new(page, dir)
+            Dir["#{dir}/**/*.html.*", "#{dir}/**/*.md.*"].sort.map do |path|
+              create(path, dir)
             end
           end.partition { |page| page.type == :page }
 
@@ -169,17 +169,25 @@ module Lookbook
           .sort_by { |page| [page.position, page.label] }
 
         page_dict = sorted_pages.index_by(&:path)
-        sorted_tabs = tabs.sort_by { |tab| [tab.position, tab.label] }
+        sorted_sections = sections.sort_by { |section| [section.position, section.label] }
 
-        sorted_tabs.each do |tab|
-          page_dict[tab.path].tabs << tab
+        sorted_sections.each do |section|
+          page_dict[section.path].sections << section
         end
 
         PageCollection.new(sorted_pages)
       end
 
       def page_paths
-        Lookbook.config.page_paths.select { |dir| Dir.exist? dir }
+        PathUtils.normalize_all(Lookbook.config.page_paths)
+      end
+
+      def section_path?(path)
+        !!path.match(%r{\[(.*?\w+)\]})
+      end
+
+      def create(path, base_path)
+        (section_path?(path) ? PageSection : Page).new(path, base_path)
       end
     end
   end

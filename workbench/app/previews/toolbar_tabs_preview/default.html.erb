@@ -1,0 +1,28 @@
+<%= render Lookbook::Toolbar::Component.new do |toolbar| %>
+  <% toolbar.section do %>
+    <%= render Lookbook::Tabs::Component.new alpine_data: "$store.workbench.tabbedPanels" do |tabs| %>
+      <% tabs.tab label: "First tab" %>
+      <% tabs.tab label: "Second tab" %>
+      <% tabs.tab label: "Third tab" %>
+      <% tabs.tab label: "Fourth tab" %>
+    <% end %>
+  <% end %>
+<% end %>
+
+<%= render Lookbook::TabPanels::Component.new(
+  alpine_data: "$store.workbench.tabbedPanels",
+  class: "border border-gray-300 border-t-0 p-4 !h-auto"
+) do |tabs| %>
+  <% tabs.panel do %>
+    First panel
+  <% end %>
+  <% tabs.panel do %>
+    Second panel
+  <% end %>
+  <% tabs.panel do %>
+    Third panel
+  <% end %>
+  <% tabs.panel do %>
+    Fourth panel
+  <% end %>
+<% end %>

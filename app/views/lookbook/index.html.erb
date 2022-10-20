@@ -1,9 +1,14 @@
-<div class="flex flex-col h-full w-full">
-  <%= component "header" %>
-  <div class="flex flex-col items-center justify-center h-full">
-    <div class="p-4 text-center">
-      <%= icon "layers", size: 10, class: "text-gray-300 mx-auto" %>
-      <h5 class="mt-4 text-gray-400 text-base">Select a preview to get started</h5>
+<div id="landing" class="flex flex-col items-center justify-center h-full w-full">
+  <div class="text-center" id="landing-<%= @previews.any? ? "with" : "no" %>-content">
+    <h5 class="text-base text-lookbook-blank-slate-title truncate uppercase font-black tracking-wider mb-2">
+      <%= config.project_name %>
+    </h5>
+    <div class="opacity-60">
+      <% if @previews.any? %>
+        <p>Select a preview from the nav to get started.</p>
+      <% else %>
+        <p><a class="underline" href="https://lookbook.build/guide/previews" target="_blank">Create a preview</a> to get started.</p>
+      <% end %>
     </div>
   </div>
 </div>
